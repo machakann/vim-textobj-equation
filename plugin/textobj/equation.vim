@@ -1,5 +1,5 @@
-" Vim global plugin to define text-object for function call.
-" Last Change: 09-Jul-2014.
+" The vim textobject plugin to selet a equation like text block.
+" Last Change: 14-Jul-2014.
 " Maintainer : Masaaki Nakamura <mckn@outlook.com>
 
 " License    : NYSL
