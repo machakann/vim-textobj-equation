@@ -1,5 +1,5 @@
 " The vim textobject plugin to selet a equation like text block.
-" Last Change: 14-Jul-2014.
+" Last Change: 10-Aug-2014.
 " Maintainer : Masaaki Nakamura <mckn@outlook.com>
 
 " License    : NYSL

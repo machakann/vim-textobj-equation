@@ -7,4 +7,4 @@ Vim textobject plugin to select a (part of) equation.
 * `iel` might select a left-hand side of a equation.
 * `ier` might select a right-hand side of a equation.
 * It seems to work well with Fortran and Vim script.
-* ”ñ–¾¦“I‚ÈsŒp‘±‚Æ‚©’m‚ç‚È‚¢
+* éæ˜ç¤ºçš„ãªè¡Œç¶™ç¶šã¨ã‹çŸ¥ã‚‰ãªã„
