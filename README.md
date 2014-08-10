@@ -1,7 +1,7 @@
 vim-textobj-equation
 ====================
 
-Vim textobject plugin to select a (part of) equation.
+The Vim textobject plugin to select a (part of) equation.
 
 * `iee` might select a whole equation.
 * `iel` might select a left-hand side of a equation.
