@@ -1,0 +1,160 @@
+*textobj-equation.txt*	日本語版ヘルプ		Last change:12-Aug-2014.
+
+代入式、比較式のような部分を選択するためのテキストオブジェクトです。
+
+
+書いた人   : machakann <mckn@outlook.jp>
+ライセンス : NYSL license
+             Japanese <http://www.kmonos.net/nysl/>
+             English (Unofficial) <http://www.kmonos.net/nysl/index.en.html>
+
+==============================================================================
+CONTENTS				*textobj-equation-contents*
+
+INTRODUCTION		|textobj-equation-introduction|
+KEYMAPPINGS		|textobj-equation-keymappings|
+CONFIGURATION		|textobj-equation-configuration|
+
+==============================================================================
+INTRODUCTION				*textobj-equation-introduction*
+
+*textobj-equation* は代入式や比較式のようなテキストを選択する機能を提供しま
+す。全部で三つのキーマッピング、 |<Plug>(textobj-equation-i)| 、
+|<Plug>(textobj-lhs-i)| 、 |<Plug>(textobj-rhs-i)| が使用できます。これらはデ
+フォルトでは "iee" 、 "iel" 、 "ier" にマッピングされます。
+>
+	|<-iel->|   |<-ier->|
+	abcdefghi = jklmnopqr
+	|<-------iee------->|
+<
+代入式だけでなく比較式でも使えるので便利ですね。
+>
+	   |<-iel->|    |<-ier->|
+	if abcdefghi == jklmnopqr
+	   |<-------iee-------->|
+<
+これらの挙動は設定によって拡張することが可能です。
+|textobj-equation-configuration| をご覧ください。
+
+
+
+
+
+==============================================================================
+KEYMAPPINGS				*textobj-equation-keymappings*
+
+このプラグインは次に掲げるキーマッピングを提供します。
+
+種類            キーマッピング                          デフォルト設定
+--------------------------------------------------------------------------
+equation        <Plug>(textobj-equation-i)              iee
+  lhs           <Plug>(textobj-lhs-i)                   iel
+  rhs           <Plug>(textobj-rhs-i)                   ier
+--------------------------------------------------------------------------
+
+もし、デフォルトのキーマッピングがお気に召さなければ
+|g:textobj_equation_no_default_key_mappings| をあなたの vimrc に定義しましょ
+う。
+>
+        let g:textobj_equation_no_default_key_mappings = 1
+<
+こうすれば、デフォルトのキーマッピングは設定されません。あとはお好みのキーへ設
+定しなおしましょう。
+>
+        xmap iee <Plug>(textobj-equation-i)
+        omap iee <Plug>(textobj-equation-i)
+        xmap iel <Plug>(textobj-lhs-i)
+        omap iel <Plug>(textobj-lhs-i)
+        xmap ier <Plug>(textobj-rhs-i)
+        omap ier <Plug>(textobj-rhs-i)
+<
+
+------------------------------------------------------------------------------
+keymappings~
+<Plug>(textobj-equation-i)		*<Plug>(textobj-equation-i)*
+	このキーマッピングは式全体を選択します。もしカーソル下が式ではない場合
+	は、式を行の終わりまで検索します。
+
+<Plug>(textobj-lhs-i)			*<Plug>(textobj-lhs-i)*
+	このキーマッピングは式の左辺を選択します。もしカーソル下が式ではない場
+	合は、式を行の終わりまで検索します。
+
+<Plug>(textobj-rhs-i)			*<Plug>(textobj-rhs-i)*
+	このキーマッピングは式の右辺を選択します。もしカーソル下が式ではない場
+	合は、式を行の終わりまで検索します。
+
+
+
+
+
+==============================================================================
+CONFIGURATION				*textobj-equation-configuration*
+
+                                 *g:textobj_equation_no_default_key_mappings*
+g:textobj_equation_no_default_key_mappings
+	この変数が vimrc で定義されていると、デフォルトのキーマッピングは定義
+	されません。
+
+g:textobj_equation_patterns		*g:textobj_equation_patterns*
+	この変数を使ってテキストオブジェクトの対象を拡張することができます。こ
+	の変数は "cont" と "list" というキーを持つ辞書変数です。
+	"cont" キーは値にリストを取ります。このリストは二つの要素をもち、それ
+	ぞれ前置行継続指定文字、後置行継続指定文字です。
+	"list" キーは値にリストを取ります。このリストは式を探すための正規表現
+	を保持するリストを含みます。この正規表現を含むリストは四つの要素からな
+	ります。一つ目は代入演算子あるいは比較演算子にマッチする正規表現、"="
+	や "==" のようなものです。二つ目と三つ目はそれぞれ式の先頭と後尾を区切
+	る可能性のある文字列にマッチする正規表現です。たとえば "||" や "&&" は
+	いくつかの言語で比較式を区切りますね。最後の一つは式全体を囲みうる括弧
+	のリストです。次の例はデフォルト設定と等価になります。
+>
+	let g:textobj_equation_patterns = {}
+	let g:textobj_equation_patterns.cont = ['', '']
+	let g:textobj_equation_patterns.list = [
+	\   ['[+*/-]\?=', '', '', [['(', ')']]],
+	\   ['\%(==\|<>\|!=\|[<>]=\?\)', '\%(|\{1,2}\|&\{1,2}\)',
+	\                       '\%(|\{1,2}\|&\{1,2}\)', [['(', ')']]],
+	\ ]
+<
+
+	"g:" 以外のスコープ、 "b:"、 "w:"、 "t:" も使用できます。もし複数の変
+	数が参照可能な範囲に定義されている場合 "b:"、 "w:"、 "t:"、 "g:" の順
+	に優先されます。 b:textobj_equation_patterns は特にファイルタイプに依
+	存する設定を記述するのに役にたつでしょう。
+
+------------------------------------------------------------------------------
+filetype-dependent configurations~
+
+次に示すパターンはファイルタイプの設定時に自動で定義されます。
+
+vim~
+>
+	let b:textobj_equation_patterns = {}
+	let b:textobj_equation_patterns.cont = ['\\', '']
+	let b:textobj_equation_patterns.list = [
+	\   ['[+*/-]\?=', 'let', '', [['(', ')']]],
+	\   ['\%(==\|!=\|[<>]=\?\)', '\%(||\|&&\|=\)',
+	\                            '\%(||\|&&\|?\)', [['(', ')']]],
+	\ ]
+<
+
+
+Fortran~
+>
+	let b:textobj_equation_patterns = {}
+	let b:textobj_equation_patterns.cont = ['&', '&']
+	let b:textobj_equation_patterns.list = [
+	\   ['[+*/-]\?=', '::', '', [['(', ')']]],
+	\   ['\%(==\|/=\|[<>]=\?\|\.lt\.\|\.le\.\|\.eq\.\|\.ne\.\|\.gt\.\|\.ge\.\)',
+	\    '\%(\.not\.\|\.and\.\|\.or\.\|\.eqv\.\|\.neqv\.\)',
+	\    '\%(\.not\.\|\.and\.\|\.or\.\|\.eqv\.\|\.neqv\.\)',
+	\    [['(', ')']]],
+	\ ]
+<
+
+
+
+
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:noet:
