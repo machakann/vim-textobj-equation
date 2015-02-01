@@ -1,4 +1,4 @@
-*textobj-equation.txt*	日本語版ヘルプ		Last change:25-Aug-2014.
+*textobj-equation.txt*	日本語版ヘルプ		Last change:01-Feb-2015.
 
 代入式、比較式のような部分を選択するためのテキストオブジェクトです。
 
@@ -149,6 +149,19 @@ Fortran~
 	\    '\%(\.not\.\|\.and\.\|\.or\.\|\.eqv\.\|\.neqv\.\)',
 	\    '\%(\.not\.\|\.and\.\|\.or\.\|\.eqv\.\|\.neqv\.\)',
 	\    [['(', ')']]],
+	\ ]
+<
+
+
+Julia language~
+>
+	let b:textobj_equation_patterns = {}
+	let b:textobj_equation_patterns.cont = ['', '']
+	let b:textobj_equation_patterns.list = [
+	\   ['[+*/\\%^&|$-]\?=', '', ';', [['(', ')']]],
+	\   ['[<>]\{2}=', '', ';', [['(', ')']]],
+	\   ['>>>=', '', ';', [['(', ')']]],
+	\   ['\%(==\|!=\|[<>]=\?\)', '\%(&\||\|$\)', '\%(&\||\|$\)', [['(', ')']]],
 	\ ]
 <
 
