@@ -7,6 +7,6 @@ unlet! b:textobj_equation_patterns
 let b:textobj_equation_patterns = {}
 let b:textobj_equation_patterns.cont = ['\\', '']
 let b:textobj_equation_patterns.list = [
-      \   ['[+*/-]\?=', 'let', '', [['(', ')']]],
+      \   ['[+*/-]\?=', '\%(^\|\<\)\%(let\|if\|elseif\)\>', '', [['(', ')']]],
       \   ['\%(==\|!=\|[<>]=\?\)', '\%(||\|&&\|=\)', '\%(||\|&&\|?\)', [['(', ')']]],
       \ ]

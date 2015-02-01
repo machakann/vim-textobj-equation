@@ -1,4 +1,4 @@
-*textobj-equation.txt*	日本語版ヘルプ		Last change:12-Aug-2014.
+*textobj-equation.txt*	日本語版ヘルプ		Last change:25-Aug-2014.
 
 代入式、比較式のような部分を選択するためのテキストオブジェクトです。
 
@@ -132,7 +132,7 @@ vim~
 	let b:textobj_equation_patterns = {}
 	let b:textobj_equation_patterns.cont = ['\\', '']
 	let b:textobj_equation_patterns.list = [
-	\   ['[+*/-]\?=', 'let', '', [['(', ')']]],
+	\   ['[+*/-]\?=', '\%(\<let\>\|\<if\>\|\<elseif\>\)', '', [['(', ')']]],
 	\   ['\%(==\|!=\|[<>]=\?\)', '\%(||\|&&\|=\)',
 	\                            '\%(||\|&&\|?\)', [['(', ')']]],
 	\ ]

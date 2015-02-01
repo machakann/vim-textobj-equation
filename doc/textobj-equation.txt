@@ -1,4 +1,4 @@
-*textobj-equation.txt*				Last change:12-Aug-2014.
+*textobj-equation.txt*				Last change:25-Aug-2014.
 
 The vim textobject plugin to selet a equation like text block.
 
@@ -141,7 +141,7 @@ vim~
 	let b:textobj_equation_patterns = {}
 	let b:textobj_equation_patterns.cont = ['\\', '']
 	let b:textobj_equation_patterns.list = [
-	\   ['[+*/-]\?=', 'let', '', [['(', ')']]],
+	\   ['[+*/-]\?=', '\%(\<let\>\|\<if\>\|\<elseif\>\)', '', [['(', ')']]],
 	\   ['\%(==\|!=\|[<>]=\?\)', '\%(||\|&&\|=\)',
 	\                            '\%(||\|&&\|?\)', [['(', ')']]],
 	\ ]
