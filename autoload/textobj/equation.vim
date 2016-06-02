@@ -1,558 +1,457 @@
+" summary
+" # : cursor
+"       <-> ie
+" rhs = l#s
+" <-------> ae
+"
+" <->       ie
+" r#s = lhs
+" <-------> ae
+
+" variables "{{{
+" null valiables
+let s:null_coord  = [0, 0]
+
+" patchs
+if v:version > 704 || (v:version == 704 && has('patch237'))
+  let s:has_patch_7_4_358 = has('patch-7.4.358')
+else
+  let s:has_patch_7_4_358 = v:version == 704 && has('patch358')
+endif
+"}}}
 
 let s:save_cpo = &cpo
 set cpo&vim
 
-let s:V = vital#of('textobj_equation')
-let s:L = s:V.import('Data.List')
-unlet s:V
-
-function! textobj#equation#equation_i()
-  return s:prototype('e')
+" Interfaces  "{{{
+function! textobj#equation#i(mode) abort
+  call s:start('i', a:mode)
 endfunction
 
-function! textobj#equation#lhs_i()
-  return s:prototype('l')
+function! textobj#equation#a(mode) abort
+  call s:start('a', a:mode)
 endfunction
 
-function! textobj#equation#rhs_i()
-  return s:prototype('r')
-endfunction
+let g:textobj#equation#timeout = get(g:, 'textobj#equation#timeout', 500)
+let g:textobj#equation#expand_range = get(g:, 'textobj#equation#expand_range', 100)
 
-let s:textobj_equation_patterns = {}
-let s:textobj_equation_patterns.cont = ['', '']
-let s:textobj_equation_patterns.list = [
-      \   ['[+*/-]\?=', '', '', [['(', ')']]],
-      \   ['\%(==\|<>\|!=\|[<>]=\?\)', '\%(|\{1,2}\|&\{1,2}\)',  '\%(|\{1,2}\|&\{1,2}\)', [['(', ')']]],
-      \ ]
-
-function! s:prototype(kind) "{{{
-  let l:count      = v:count1
-  let orig_pos     = [line('.'), col('.')]
-  let patterns     = s:user_conf('patterns', s:textobj_equation_patterns)
-
-  " search continuation signs for backward
-  let current_line = orig_pos[0]
-  let head_line    = current_line
-  let tail_line    = current_line
-  let cont_head    = get(get(patterns, 'cont', []), 0, '')
-  let cont_tail    = get(get(patterns, 'cont', []), 1, '')
-  if (cont_head != '') || (cont_tail != '')
-    while 1
-      if ((cont_head != '') && (match(getline(current_line), '^\s*\zs' . cont_head) >= 0))
-        \ || ((cont_tail != '') && (match(getline(current_line - 1), cont_tail . '\ze\s*$') >= 0))
-        let current_line -= 1
-        let head_line     = current_line
-
-        if current_line == 1
-          break
-        endif
-      else
-        break
-      endif
-    endwhile
-  endif
-
-  " search continuation signs for forward
-  let current_line = orig_pos[0]
-  let last_line    = line('$')
-  if (cont_head != '') || (cont_tail != '')
-    while 1
-      if ((cont_tail != '') && (match(getline(current_line), cont_tail . '\ze\s*$') >= 0))
-        \ || ((cont_head != '') && (match(getline(current_line + 1), '^\s*\zs' . cont_head) >= 0))
-        let current_line += 1
-        let tail_line     = current_line
-
-        if current_line == last_line
-          break
-        endif
-      else
-        break
-      endif
-    endwhile
-  endif
-
-  let rank = 0
-  let operator_pos  = []
-  let operator_list = []
-  for pattern in patterns.list
-    let rank += 1
-
-    " search equation operators for backward
-    let flag = 'bce'
-    call cursor(orig_pos)
-    while 1
-      let pos = searchpos(pattern[0], flag, head_line)
-      if pos == [0, 0]
-        break
-      else
-        let flag = 'bc'
-        let operator_pos   = [searchpos(pattern[0], flag, head_line), pos]
-        let operator_list += [operator_pos + [pattern, rank, s:is_exceptional_syntax(operator_pos[0])]]
-        call cursor(operator_pos[0])
-      endif
-
-      let flag = 'be'
-    endwhile
-
-    " search equation operators for forward
-    let flag = 'c'
-    call cursor(orig_pos)
-    while 1
-      let pos = searchpos(pattern[0], flag, tail_line)
-      if pos == [0, 0]
-        break
-      else
-        let flag = 'ce'
-        let operator_pos   = [pos, searchpos(pattern[0], flag, tail_line)]
-        let operator_list += [operator_pos + [pattern, rank, s:is_exceptional_syntax(operator_pos[0])]]
-        call cursor(operator_pos[0])
-      endif
-
-      let flag = ''
-    endwhile
-  endfor
-
-  " remove included
-  " item : [head_pos, tail_pos, pattern, rank]
-  for item in copy(operator_list)
-    let filter  = '(v:val == item)'
-    let filter .= ' || ((v:val[0][0] < item[0][0]) || ((v:val[0][0] == item[0][0]) && (v:val[0][1] < item[0][1])))'
-    let filter .= ' || ((v:val[1][0] > item[1][0]) || ((v:val[1][0] == item[1][0]) && (v:val[1][1] > item[1][1])))'
-    call filter(operator_list, filter)
-  endfor
-
-  " remove duplicates
-  let operator_list = s:L.uniq(operator_list)
-
-  " search equations
-  " operator  : [head_pos, tail_pos, pattern, rank]
-  " candidate : [lhs_head, rhs_tail, rank, operator_head_pos, operator_tail_pos]
-  let candidate_list = []
-  let sub_candidate_list = []
-  for operator in operator_list
-    let candidate = s:find_equation(operator, head_line, tail_line, get(patterns, 'cont', []))
-
-    if (candidate != [])
-      if ((candidate[0][0] < orig_pos[0]) || ((candidate[0][0] == orig_pos[0]) && (candidate[0][1] <= orig_pos[1])))
-        \   && ((candidate[1][0] > orig_pos[0]) || ((candidate[1][0] == orig_pos[0]) && (candidate[1][1] >= orig_pos[1])))
-
-        let candidate_list += [candidate]
-      elseif (candidate[3][0] == orig_pos[0] && candidate[3][1] > orig_pos[1])
-        let sub_candidate_list += [candidate]
-      endif
-    endif
-  endfor
-
-  if (candidate_list == []) && (sub_candidate_list == [])
-    return 0
-  elseif candidate_list == []
-    let sub_candidate_list = s:sort_sub_candidates(sub_candidate_list, orig_pos, head_line, tail_line)
-    let elected = get(sub_candidate_list, l:count - 1, sub_candidate_list[-1])
-  else
-    let candidate_list = s:sort_candidates(candidate_list, head_line, tail_line)
-    let elected = get(candidate_list, l:count - 1, candidate_list[-1])
-  endif
-
-  if a:kind == 'l'
-    let elected[1] = s:search_edge_ignoring_continuation(elected[4], get(patterns, 'cont', []), 'b', [head_line, 1])
-  elseif a:kind == 'r'
-    let elected[0] = s:search_edge_ignoring_continuation(elected[5], get(patterns, 'cont', []),  '', [tail_line, len(getline(tail_line))])
-  endif
-
-  return ['v', [0] + elected[0] + [0], [0] + elected[1] + [0]]
-endfunction
+let g:textobj_equation_rules = get(g:, 'textobj_equation_rules', [
+      \   {'bridge': '\_s*[^=!<>]=\_s*', 'left': '\%(;\|{\|}\)\_s*', 'right': '\_s*\%(;\|{\|}\)', 'priority': -10},
+      \   {'bridge': '\_s*[-+/*]=\_s*', 'left': '\%(;\|{\|}\)\_s*', 'right': '\_s*\%(;\|{\|}\)'},
+      \   {'bridge': '\_s*[=!<>]=\_s*', 'left': '\%(\%(else\)\?if\|&&\|||\|;\|=\)\_s*', 'right': '\_s*\%(&&\|||\|;\|?\)'},
+      \ ])
 "}}}
-function! s:user_conf(name, default)    "{{{
-  let user_conf = a:default
 
-  if exists('g:textobj_equation_' . a:name)
-    let user_conf = g:textobj_equation_{a:name}
-  endif
+function! s:start(kind, mode) abort  "{{{
+  let l:count = v:count1
+  let view = winsaveview()
+  let currentline = line('.')
+  let rules = get(b:, 'textobj_equation_rules', g:textobj_equation_rules)
+  let continuation = get(b:, 'textobj_equation_continuation', {})
 
-  if exists('t:textobj_equation_' . a:name)
-    let user_conf = t:textobj_equation_{a:name}
-  endif
-
-  if exists('w:textobj_equation_' . a:name)
-    let user_conf = w:textobj_equation_{a:name}
-  endif
-
-  if exists('b:textobj_equation_' . a:name)
-    let user_conf = b:textobj_equation_{a:name}
-  endif
-
-  return user_conf
-endfunction
-"}}}
-function! s:find_equation(operator, head_line, tail_line, cont)  "{{{
-  " search left hand side member
-  let candidates  = []
-  let candidates += [s:search_edge_from_line_end(a:operator[0], 'b', a:cont, a:head_line)]
-  let candidates += [s:search_edge_by_successive_terms(a:operator[0], 'b', a:cont, a:operator[2][3], a:head_line)]
-  let candidates += [s:search_edge_by_paired_braket(a:operator[0], 'b', a:operator[2][3], a:cont, a:head_line, a:tail_line)]
-
-  if a:operator[2][1] != ''
-    let candidates += [s:search_edge_by_delimiter(a:operator[0], 'b', a:operator[2][1], a:cont, a:head_line)]
-  endif
-
-  if a:operator[4]
-    let candidates += [s:search_edge_by_syntax(a:operator[0], 'b', a:head_line)]
-  endif
-  call filter(candidates, 'v:val != [0, 0]')
-
-  if candidates == []
-    return []
-  elseif len(candidates) == 1
-    let lhs_head = candidates[0]
-  else
-    let lhs_head = s:sort_candidates(map(candidates, '[v:val, a:operator[0], 1, [0, 0], [0, 0]]'), a:head_line, a:tail_line)[0][0]
-  endif
-
-  " search right hand side member
-  let candidates  = []
-  let candidates += [s:search_edge_from_line_end(a:operator[1], '', a:cont, a:tail_line)]
-  let candidates += [s:search_edge_by_successive_terms(a:operator[1], '', a:cont, a:operator[2][3], a:tail_line)]
-  let candidates += [s:search_edge_by_paired_braket(a:operator[1], '', a:operator[2][3], a:cont, a:head_line, a:tail_line)]
-
-  if a:operator[2][2] != ''
-    let candidates += [s:search_edge_by_delimiter(a:operator[1], '', a:operator[2][2], a:cont, a:tail_line)]
-  endif
-
-  if a:operator[4]
-    let candidates += [s:search_edge_by_syntax(a:operator[1], '', a:tail_line)]
-  endif
-  call filter(candidates, 'v:val != [0, 0]')
-
-  if candidates == []
-    return []
-  elseif len(candidates) == 1
-    let rhs_tail = candidates[0]
-  else
-    let rhs_tail = s:sort_candidates(map(candidates, '[a:operator[1], v:val, 1, [0, 0], [0, 0]]'), a:head_line, a:tail_line)[0][1]
-  endif
-
-  let rank = a:operator[3]
-
-  return [lhs_head, rhs_tail, rank, a:operator[0], a:operator[1]]
-endfunction
-"}}}
-function! s:search_edge_from_line_end(orig_pos, flag, cont_list, stopline) "{{{
-  call cursor([a:stopline, 1])
-
-  if a:flag == 'b'
-    let edge = s:search_edge_ignoring_continuation([a:stopline, 1], a:cont_list,  'c', a:orig_pos)
-  else
-    let edge = s:search_edge_ignoring_continuation([a:stopline, col('$')], a:cont_list, 'bc', a:orig_pos)
-  endif
-
-  if synIDattr(synIDtrans(synID(edge[0], edge[1], 1)), "name") == 'Comment'
-    if a:flag == 'b'
-      let edge = s:search_current_syntax_edge(edge,  '', a:orig_pos[0])
-      let edge = s:search_edge_ignoring_continuation(edge, a:cont_list,  '', a:orig_pos)
+  let equations = []
+  let options = s:shift_options()
+  try
+    let [topline, botline] = s:search_explicit_continued_line(continuation)
+    let bridges = []
+    let bridges += s:search_bridge_for('forward', rules, botline)
+    let bridges += s:search_bridge_for('backward', rules, topline)
+    if bridges != []
+      let equations = s:find_equations(bridges, continuation, topline, botline)
     else
-      let edge = s:search_current_syntax_edge(edge, 'b', a:orig_pos[0])
-      let edge = s:search_edge_ignoring_continuation(edge, a:cont_list, 'b', a:orig_pos)
+      let [topline, botline] = s:expand_range(currentline)
+      let equations = s:search_equations(rules, continuation, topline, botline)
+    endif
+  catch
+    echoerr printf('textobj-equation: Unanticipated error. [%s] %s', v:throwpoint, v:exception)
+  finally
+    call winrestview(view)
+    let elected = s:election(equations, l:count)
+    call elected.select(a:kind, a:mode)
+    call s:restore_options(options)
+  endtry
+endfunction
+"}}}
+function! s:shift_options() abort "{{{
+  let options = {}
+  let options.virtualedit = &virtualedit
+  let options.whichwrap   = &whichwrap
+  let options.selection   = &selection
+  let [&virtualedit, &whichwrap, &selection] = ['onemore', 'h,l', 'inclusive']
+  return options
+endfunction
+"}}}
+function! s:restore_options(options) abort  "{{{
+  let &virtualedit = a:options.virtualedit
+  let &whichwrap   = a:options.whichwrap
+  let &selection   = a:options.selection
+endfunction
+"}}}
+function! s:search_explicit_continued_line(continuation) abort  "{{{
+  let currentline = line('.')
+  let topline = 0
+  let botline = 0
+  let preposed  = get(a:continuation, 'preposed',  '')
+  let postposed = get(a:continuation, 'postposed', '')
+  let termination = get(a:continuation, 'termination',  '')
+
+  if preposed !=# '' || postposed !=# ''
+    let firstline = 1
+    if currentline > firstline
+      for i in range(currentline-1, firstline, -1)
+        if !((preposed !=# '' && getline(i+1) =~# preposed)
+              \ || (postposed !=# '' && getline(i) =~# postposed))
+          break
+        endif
+        let topline = i
+      endfor
+    endif
+
+    let lastline = line('$')
+    if currentline < lastline
+      for i in range(currentline+1, lastline)
+        if !((preposed !=# '' && getline(i) =~# preposed)
+              \ || (postposed !=# '' && getline(i-1) =~# postposed))
+          break
+        endif
+        let botline = i
+      endfor
     endif
   endif
 
-  call cursor(a:orig_pos)
-  return edge
-endfunction
-"}}}
-function! s:search_edge_by_successive_terms(orig_pos, flag, cont_list, braket, stopline)  "{{{
-  call cursor(a:orig_pos)
-
-  let head_cont = (a:cont_list[0] == '') ? '' : (a:cont_list[0] . '\?')
-  let tail_cont = (a:cont_list[1] == '') ? '' : (a:cont_list[1] . '\?')
-
-  let bra_pat = '\%(' . join(map(copy(a:braket), 'escape(v:val[0], ''~"\.^$[]*'')'), '\|') . '\)*'
-  let ket_pat = '\%(' . join(map(copy(a:braket), 'escape(v:val[1], ''~"\.^$[]*'')'), '\|') . '\)*'
-
-  if a:flag ==# 'b'
-    let edge = searchpos('\k\+' . ket_pat . '\s*' . tail_cont . '\_s\+' . head_cont . '\s*\zs' . bra_pat . '\k\+', 'b', a:stopline)
-  else
-    let edge = searchpos('\k\+' . ket_pat . '\ze\s*' . tail_cont . '\_s\+' . head_cont . '\s*' . bra_pat . '\k\+', 'e', a:stopline)
+  if topline == 0 && botline == 0 && termination !=# ''
+    let topline = max([1, search(termination, 'bcnW')])
+    let botline = min([search(termination, 'cenW'), line('$')])
   endif
 
-  call cursor(a:orig_pos)
-  return edge
+  return [topline, botline]
 endfunction
 "}}}
-function! s:search_edge_by_paired_braket(orig_pos, flag, braket_list, cont_list, head_line, tail_line)  "{{{
-  call cursor(a:orig_pos)
-
-  let candidates = []
-  let bra_pos    = [0, 0]
-  let ket_pos    = [0, 0]
-  for braket in a:braket_list
-    let bra = braket[0]
-    let ket = braket[1]
-
-    if a:flag ==# 'b'
-      while 1
-        let bra_pos = searchpos(bra, 'be', a:head_line)
-
-        if bra_pos != [0, 0]
-          let ket_pos = searchpairpos(bra, '', ket, 'n', 0, a:tail_line)
-        else
-          break
-        endif
-
-        if ket_pos != [0, 0]
-          if ((ket_pos[0] > a:orig_pos[0]) || ((ket_pos[0] == a:orig_pos[0]) && (ket_pos[1] > a:orig_pos[1])))
-            let candidates += [[s:search_edge_ignoring_continuation(bra_pos, a:cont_list,  '', a:orig_pos), a:orig_pos, 1, [0, 0], [0, 0]]]
-          else
-            continue
-          endif
-        else
-          break
-        endif
-      endwhile
-    else
-      while 1
-        let ket_pos = searchpos(ket, '', a:tail_line)
-
-        if ket_pos != [0, 0]
-          let bra_pos = searchpairpos(bra, '', ket, 'bn', 0, a:head_line)
-        else
-          break
-        endif
-
-        if bra_pos != [0, 0]
-          if ((bra_pos[0] < a:orig_pos[0]) || ((bra_pos[0] == a:orig_pos[0]) && (bra_pos[1] < a:orig_pos[1])))
-            let candidates += [[a:orig_pos, s:search_edge_ignoring_continuation(ket_pos, a:cont_list, 'b', a:orig_pos), 1, [0, 0], [0, 0]]]
-          else
-            continue
-          endif
-        else
-          break
-        endif
-      endwhile
-    endif
+function! s:search_bridge_for(direction, rules, stopline) abort  "{{{
+  let cursorpos = getpos('.')
+  let stopline = a:stopline != 0 ? a:stopline : cursorpos[1]
+  let timeout = g:textobj#equation#timeout
+  let flag1 = a:direction ==# 'backward' ? 'b' : ''
+  let flag2 = 'cen'
+  let bridges = []
+  for rule in a:rules
+    let head = searchpos(rule.bridge, flag1 . 'c', stopline, timeout)
+    while head != s:null_coord
+      let tail = searchpos(rule.bridge, flag2)
+      let bridges += [[rule, head, tail]]
+      let head = searchpos(rule.bridge, flag1, stopline, timeout)
+    endwhile
+    call setpos('.', cursorpos)
   endfor
-
-  if len(candidates) == 0
-    let edge = [0, 0]
-  elseif len(candidates) == 1
-    let edge = (a:flag ==# 'b') ? candidates[0][0] : candidates[0][1]
-  else
-    let candidates = s:sort_candidates(candidates, a:head_line, a:tail_line)
-    let edge = (a:flag ==# 'b') ? candidates[0][0] : candidates[0][1]
-  endif
-
-  call cursor(a:orig_pos)
-  return edge
+  return bridges
 endfunction
 "}}}
-function! s:search_edge_by_delimiter(orig_pos, flag, delimiter, cont_list, stopline)  "{{{
-  call cursor(a:orig_pos)
-  let delimiter_pos = (a:flag ==# 'b') ? searchpos(a:delimiter, 'be', a:stopline)
-        \                              : searchpos(a:delimiter,   '', a:stopline)
-
-  let flag = (a:flag ==# 'b') ? '' : 'b'
-
-  let edge = (delimiter_pos == [0, 0]) ? [0, 0]
-        \                              : s:search_edge_ignoring_continuation(delimiter_pos, a:cont_list, flag, a:orig_pos)
-
-  call cursor(a:orig_pos)
-  return edge
+function! s:find_equations(bridges, continuation, topline, botline) abort "{{{
+  return filter(map(a:bridges, 's:equation(v:val, a:continuation, a:topline, a:botline)'), 'v:val.valid')
 endfunction
 "}}}
-function! s:search_edge_by_syntax(orig_pos, flag, stopline) "{{{
-  let edge = s:search_current_syntax_edge(a:orig_pos, a:flag, a:stopline)
-
-  if a:flag == 'b'
-    normal! l
-  else
-    normal! h
+function! s:search_equations(rules, continuation, topline, botline) abort  "{{{
+  let equations = []
+  let [head, tail] = s:search_innermost_wrapping(a:continuation, 'b', a:topline, a:botline)
+  if head == s:null_coord
+    normal! ^
+    let [head, tail] = s:search_innermost_wrapping(a:continuation, 'b', a:topline, a:botline)
   endif
-  let edge = [line('.'), col('.')]
-
-  return edge
-endfunction
-"}}}
-function! s:search_edge_ignoring_continuation(init_pos, cont_list, flag, stop_pos)  "{{{
-  let edge = [-1, -1]
-  let head_cont_pat = '^\s*\zs' . a:cont_list[0]
-  let tail_cont_pat = a:cont_list[1] . '\ze\s*$'
-  let head_cont_pos = [-1, -1]
-  let tail_cont_pos = [-1, -1]
-
-  if a:flag ==# 'b'
-    let flag1 = 'be'
-    let flag2 = 'b'
-  elseif a:flag == ''
-    let flag1 = ''
-    let flag2 = 'e'
-  elseif a:flag == 'bc'
-    let flag1 = 'bce'
-    let flag2 = 'b'
-  elseif a:flag == 'c'
-    let flag1 = 'c'
-    let flag2 = 'e'
-  endif
-
-  let current_pos = a:init_pos
-  call cursor(current_pos)
-  while 1
-    if (edge != [0, 0]) && ((edge == head_cont_pos) || (edge == tail_cont_pos))
-      " search line-head continuation
-      if a:cont_list[0] != ''
-        let head_cont_pos = searchpos(head_cont_pat, flag1, a:stop_pos[0])
-        call cursor(current_pos)
-      endif
-
-      " search line-end continuation
-      if a:cont_list[1] != ''
-        let tail_cont_pos = searchpos(tail_cont_pat, flag1, a:stop_pos[0])
-        call cursor(current_pos)
-      endif
-
-      " search the first non-space character
-      let edge = searchpos('\S', flag1, a:stop_pos[0])
-      call cursor(current_pos)
-
-      if edge == head_cont_pos
-        let current_pos = searchpos(head_cont_pat, flag2, a:stop_pos[0])
-      elseif edge == tail_cont_pos
-        let current_pos = searchpos(tail_cont_pat, flag2, a:stop_pos[0])
+  for i in range(20)
+    if head != s:null_coord && tail != s:null_coord
+      let bridges = s:search_bridge_for('backward', a:rules, head[0])
+      if bridges != []
+        let equations = s:find_equations(bridges, a:continuation, a:topline, a:botline)
+        if equations != []
+          break
+        endif
       endif
     else
       break
     endif
-  endwhile
-
-  if (a:flag == 'b') || (a:flag == 'bc')
-    if (edge[0] < a:stop_pos[0]) || ((edge[0] == a:stop_pos[0]) && (edge[1] <= a:stop_pos[1]))
-      let edge = [0, 0]
-    endif
-  elseif (a:flag == '') || (a:flag == 'c')
-    if (edge[0] > a:stop_pos[0]) || ((edge[0] == a:stop_pos[0]) && (edge[1] >= a:stop_pos[1]))
-      let edge = [0, 0]
-    endif
-  endif
-
-  call cursor(a:init_pos)
-  return edge
+    let [head, _] = s:search_innermost_wrapping(a:continuation, 'b', head[0], tail[0])
+  endfor
+  return equations
 endfunction
 "}}}
-function! s:search_current_syntax_edge(orig_pos, flag, stopline)  "{{{
-  call cursor(a:orig_pos)
-  let syntax = synIDattr(synIDtrans(synID(a:orig_pos[0], a:orig_pos[1], 1)), "name")
-
-  let current_line = a:orig_pos[0]
-  let current_col  = a:orig_pos[1]
-  if a:flag == 'b'
-    while current_line >= a:stopline
-      let list = reverse(map(range(1, current_col), 'synIDattr(synIDtrans(synID(current_line, v:val, 1)), "name") == syntax'))
-
-      let find = 0
-      for bool in list
-        if bool == 0
-          let current_col += 1
-          let find = 1
+function! s:equation(bridge, continuation, topline, botline) abort  "{{{
+  let equation = deepcopy(s:equation)
+  let [rule, head, tail] = a:bridge
+  if head != s:null_coord && tail != s:null_coord
+    let equation = deepcopy(s:equation)
+    let equation.bridge.pattern = rule.bridge
+    let equation.bridge.head = head
+    let equation.bridge.tail = tail
+    let cursorpos = getpos('.')[1:2]
+    call cursor(head)
+    let brakets = {'braket': [['(', ')'], ['{', '}'], ['\[', '\]']]}
+    let [wraphead, wraptail] = s:search_innermost_wrapping(brakets, 'b', head[0], tail[0])
+    call cursor(cursorpos)
+    let equation.head = s:get_head(rule, head, wraphead, a:topline)
+    let equation.tail = s:get_tail(rule, tail, wraptail, a:botline, a:continuation)
+    let equation.len = s:get_buf_length(equation.head, equation.tail)
+    let equation.valid = 1
+    let equation.priority = get(rule, 'priority', 0)
+  endif
+  return equation
+endfunction
+"}}}
+function! s:get_head(rule, bridgehead, wraphead, topline) abort  "{{{
+  call cursor(a:bridgehead)
+  let stopline = a:wraphead[0] != 0 ? a:wraphead[0] : a:bridgehead[0]
+  let stopline = max(filter([stopline, a:topline], 'v:val > 0'))
+  let pattern = get(a:rule, 'left', '')
+  let left_edge = pattern !=# '' ? searchpos(pattern, 'be', stopline)
+                               \ : copy(s:null_coord)
+  if left_edge != s:null_coord
+    let head = s:nextpos(left_edge)
+  else
+    let head = s:get_line_start(stopline)
+  endif
+  if a:wraphead != s:null_coord && s:is_equal_or_ahead(a:wraphead, head)
+    let head = s:nextpos(a:wraphead)
+  endif
+  return head
+endfunction
+"}}}
+function! s:get_tail(rule, bridgetail, wraptail, botline, continuation) abort  "{{{
+  call cursor(a:bridgetail)
+  let pattern = get(a:rule, 'right', '')
+  if a:botline != 0
+    let right_edge = pattern !=# '' ? searchpos(pattern, '', a:botline) : copy(s:null_coord)
+    let tail = right_edge != s:null_coord ? s:prevpos(right_edge) : s:get_line_end(a:botline)
+  else
+    let [_, stopline] = s:expand_range(a:bridgetail[0])
+    for i in range(20)
+      let currentline = line('.')
+      let right_edge = pattern !=# '' ? searchpos(pattern, '', currentline) : copy(s:null_coord)
+      if right_edge != s:null_coord
+        let tail = s:prevpos(right_edge)
+        break
+      else
+        let last_tail = s:get_line_end(currentline)
+        call cursor(last_tail)
+        let [head, tail] = s:search_innermost_wrapping(a:continuation, '', currentline, stopline)
+        if head == s:null_coord || tail == s:null_coord
+              \ || !(head[0] == currentline && s:is_ahead(head, a:bridgetail))
+          let tail = last_tail
           break
         endif
-
-        let current_col -= 1
-      endfor
-
-      if find == 1
-        break
       endif
-
-      let current_line -= 1
-      call cursor(current_line, 1)
-      let current_col = col('$')
-    endwhile
+    endfor
+  endif
+  if a:wraptail != s:null_coord && s:is_equal_or_ahead(tail, a:wraptail)
+    let tail = s:prevpos(a:wraptail)
+  endif
+  return tail
+endfunction
+"}}}
+function! s:get_buf_length(start, end) abort  "{{{
+  if a:start[0] == a:end[0]
+    let len = a:end[1] - a:start[1] + 1
   else
-    while current_line <= a:stopline
-      let list = map(range(current_col, col('$')), 'synIDattr(synIDtrans(synID(current_line, v:val, 1)), "name") == syntax')
+    let len = (line2byte(a:end[0]) + a:end[1]) - (line2byte(a:start[0]) + a:start[1]) + 1
+  endif
+  return len
+endfunction
+"}}}
+function! s:search_innermost_wrapping(continuation, flag, topline, botline) abort "{{{
+  let timeout = g:textobj#equation#timeout
+  let skip = 's:is_string_literal(getpos(''.'')[1:2])'
+  let initpos = getpos('.')
+  let brakets = get(a:continuation, 'braket', [])
+  if brakets == []
+    let edges = [copy(s:null_coord), copy(s:null_coord)]
+  else
+    if stridx(a:flag, 'b') > -1
+      let frag1 = 'b'
+      let frag2 = 'n'
+    else
+      let frag1 = 'bcn'
+      let frag2 = ''
+    endif
 
-      let find = 0
-      for bool in list
-        if bool == 0
-          let find = 1
-          let current_col -= 1
-          break
+    let list = []
+    for braket in brakets
+      let list += [[
+            \   searchpairpos(braket[0], '', braket[1], frag1, skip, a:topline, timeout),
+            \   searchpairpos(braket[0], '', braket[1], frag2, skip, a:botline, timeout)
+            \ ]]
+      call setpos('.', initpos)
+    endfor
+    call filter(list, 'v:val[0] != s:null_coord && v:val[1] != s:null_coord')
+    call s:sort(list, 's:compare_range_inner', 1)
+    let edges = get(list, 0, [copy(s:null_coord), copy(s:null_coord)])
+  endif
+
+  if edges[0] != s:null_coord && edges[1] != s:null_coord
+    let pos = stridx(a:flag, 'b') > -1 ? edges[0] : edges[1]
+    call cursor(pos)
+  endif
+  return edges
+endfunction
+"}}}
+function! s:expand_range(lnum) abort  "{{{
+  let expand_range = g:textobj#equation#expand_range
+  return [max([1, a:lnum - expand_range]), min([a:lnum + expand_range, line('$')])]
+endfunction
+"}}}
+function! s:compare_range_inner(r1, r2) abort "{{{
+  return s:compare_pos(a:r1[0], a:r2[0])
+endfunction
+"}}}
+function! s:compare_range_outer(r1, r2) abort "{{{
+  return -s:compare_pos(a:r1[0], a:r2[0])
+endfunction
+"}}}
+function! s:compare_pos(p1, p2) abort "{{{
+  return a:p1[0] != a:p2[0] ? a:p2[0] - a:p1[0] : a:p2[1] - a:p1[1]
+endfunction
+"}}}
+function! s:election(equations, count) abort  "{{{
+  let cursorpos = getpos('.')[1:2]
+  call filter(a:equations, 's:is_in_between(cursorpos, v:val.head, v:val.tail)')
+  if len(a:equations) < a:count
+    return deepcopy(s:equation)
+  endif
+
+  call s:sort(a:equations, 's:compare_len', a:count)
+  return a:equations[a:count - 1]
+endfunction
+"}}}
+" function! s:sort(list, func, ...) abort  "{{{
+if s:has_patch_7_4_358
+  function! s:sort(list, func, ...) abort
+    return sort(a:list, a:func)
+  endfunction
+else
+  function! s:sort(list, func, ...) abort
+    " NOTE: len(a:list) is always larger than n or same.
+    " FIXME: The number of item in a:list would not be large, but if there was
+    "        any efficient argorithm, I would rewrite here.
+    let len = len(a:list)
+    let n = min([get(a:000, 0, len), len])
+    for i in range(n)
+      if len - 2 >= i
+        let min = len - 1
+        for j in range(len - 2, i, -1)
+          if call(a:func, [a:list[min], a:list[j]]) >= 1
+            let min = j
+          endif
+        endfor
+
+        if min > i
+          call insert(a:list, remove(a:list, min), i)
         endif
-
-        let current_col += 1
-      endfor
-
-      if find == 1
-        break
       endif
-
-      let current_line += 1
-      call cursor(current_line, 1)
-      let current_col = 1
-    endwhile
-  endif
-
-  call cursor(current_line, current_col)
-  return [current_line, current_col]
+    endfor
+    return a:list
+  endfunction
+endif
+"}}}
+function! s:compare_len(e1, e2) abort "{{{
+  return a:e1.priority != a:e2.priority ? a:e2.priority - a:e1.priority : a:e1.len - a:e2.len
 endfunction
 "}}}
-function! s:sort_candidates(candidates, top_line, bottom_line)  "{{{
-  let length_list = map(getline(a:top_line, a:bottom_line), 'len(v:val) + 1')
-
-  let idx = 0
-  let accummed_length = 0
-  let accummed_list   = [0]
-  for length in length_list[1:]
-    let accummed_length  = accummed_length + length_list[idx]
-    let accummed_list   += [accummed_length]
-    let idx += 1
-  endfor
-
-  " candidates == [[[head_pos], [tail_pos], rank, distance], ...]
-  let candidates = map(copy(a:candidates), '[v:val[0], v:val[1], v:val[2], ((accummed_list[v:val[1][0] - a:top_line] - v:val[0][1] + 1) + v:val[1][1]), v:val[3], v:val[4]]')
-
-  return sort(candidates, 's:compare_rank')
+function! s:is_equal_or_ahead(c1, c2) abort  "{{{
+  return (a:c1[0] > a:c2[0]) || (a:c1[0] == a:c2[0] && a:c1[1] >= a:c2[1])
 endfunction
 "}}}
-function! s:sort_sub_candidates(candidates, orig_pos, top_line, bottom_line)  "{{{
-  let length_list = map(getline(a:top_line, a:bottom_line), 'len(v:val) + 1')
-
-  let idx = 0
-  let accummed_length = 0
-  let accummed_list   = [0]
-  for length in length_list[1:]
-    let accummed_length  = accummed_length + length_list[idx]
-    let accummed_list   += [accummed_length]
-    let idx += 1
-  endfor
-
-  " candidates == [[[head_pos], [tail_pos], rank, distance], ...]
-  let candidates = map(copy(a:candidates), '[v:val[0], v:val[1], v:val[2], ((accummed_list[v:val[3][0] - a:top_line] - a:orig_pos[1] + 1) + v:val[3][1]), v:val[3], v:val[4]]')
-
-  return sort(candidates, 's:compare_rank')
+function! s:is_ahead(c1, c2) abort  "{{{
+  return (a:c1[0] > a:c2[0]) || (a:c1[0] == a:c2[0] && a:c1[1] > a:c2[1])
 endfunction
 "}}}
-function! s:compare_rank(i1, i2) "{{{
-  if a:i1[3] < a:i2[3]
-    return -1
-  elseif a:i1[3] > a:i2[3]
-    return 1
+function! s:is_in_between(coord, head, tail) abort  "{{{
+  return (a:coord != s:null_coord) && (a:head != s:null_coord) && (a:tail != s:null_coord)
+    \  && ((a:coord[0] > a:head[0]) || ((a:coord[0] == a:head[0]) && (a:coord[1] >= a:head[1])))
+    \  && ((a:coord[0] < a:tail[0]) || ((a:coord[0] == a:tail[0]) && (a:coord[1] <= a:tail[1])))
+endfunction
+"}}}
+function! s:get_line_start(lnum) abort "{{{
+  let initpos = getpos('.')
+  call cursor([a:lnum, 1])
+  normal! ^
+  let line_start = getpos('.')[1:2]
+  call setpos('.', initpos)
+  return line_start
+endfunction
+"}}}
+function! s:get_line_end(lnum) abort "{{{
+  let initpos = getpos('.')
+  call cursor([a:lnum, col([a:lnum, '$']) - 1])
+  call search('\S', 'bc', a:lnum)
+  let line_end = getpos('.')[1:2]
+  call setpos('.', initpos)
+  return line_end
+endfunction
+"}}}
+function! s:prevpos(coord) abort "{{{
+  call cursor(a:coord)
+  normal! h
+  return getpos('.')[1:2]
+endfunction
+"}}}
+function! s:nextpos(coord) abort "{{{
+  call cursor(a:coord)
+  normal! l
+  return getpos('.')[1:2]
+endfunction
+"}}}
+function! s:is_string_literal(pos) abort  "{{{
+  return match(map(synstack(a:pos[0], a:pos[1]), 'synIDattr(synIDtrans(v:val), "name")'), 'String') > -1
+endfunction
+"}}}
+
+" equation object "{{{
+let s:equation = {
+      \   'valid': 0,
+      \   'head': copy(s:null_coord),
+      \   'tail': copy(s:null_coord),
+      \   'priority': 0,
+      \   'len': 0,
+      \   'bridge': {
+      \     'pattern': '',
+      \     'head': copy(s:null_coord),
+      \     'tail': copy(s:null_coord),
+      \   },
+      \ }
+function! s:equation.select(kind, mode) dict abort  "{{{
+  let [head, tail] = self._get_region(a:kind)
+  if head != s:null_coord && tail != s:null_coord
+    normal! v
+    call cursor(head)
+    normal! o
+    call cursor(tail)
   else
-    return a:i2[2] - a:i1[2]
+    if a:mode ==# 'x'
+      normal! gv
+    endif
   endif
 endfunction
 "}}}
-function! s:is_exceptional_syntax(pos)  "{{{
-  let syntax = synIDattr(synIDtrans(synID(a:pos[0], a:pos[1], 1)), "name")
-
-  if syntax ==? 'String'
-    return 1
-  elseif syntax ==? 'Comment'
-    return 2
-  elseif syntax ==? 'Character'
-    return 3
+function! s:equation._get_region(kind) dict abort "{{{
+  if a:kind ==# 'a'
+    let head = self.head
+    let tail = self.tail
+  elseif a:kind ==# 'i'
+    let cursor = getpos('.')[1:2]
+    if s:is_equal_or_ahead(cursor, self.bridge.head)
+      " rhs
+      let head = s:nextpos(self.bridge.tail)
+      let tail = self.tail
+    else
+      " lhs
+      let head = self.head
+      let tail = s:prevpos(self.bridge.head)
+    endif
   else
-    return 0
+    let null = copy(s:null_coord)
+    let head = null
+    let tail = null
   endif
+  return [head, tail]
 endfunction
+"}}}
 "}}}
 
 let &cpo = s:save_cpo

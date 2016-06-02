@@ -1,5 +1,5 @@
 " The vim textobject plugin to selet a equation like text block.
-" Last Change: 03-Oct-2014.
+" Last Change: 16-May-2016.
 " Maintainer : Masaaki Nakamura <mckn@outlook.jp>
 
 " License    : NYSL
@@ -11,24 +11,16 @@ if exists("g:loaded_textobj_equation")
 endif
 let g:loaded_textobj_equation = 1
 
-call textobj#user#plugin('equation', {
-      \   '-': {
-      \     'select-i-function': 'textobj#equation#equation_i',
-      \     'select-i': 'iee',
-      \   },
-      \ })
+onoremap <silent> <Plug>(textobj-equation-i) :<C-u>call textobj#equation#i('o')<CR>
+xnoremap <silent> <Plug>(textobj-equation-i) :<C-u>call textobj#equation#i('x')<CR>
+onoremap <silent> <Plug>(textobj-equation-a) :<C-u>call textobj#equation#a('o')<CR>
+xnoremap <silent> <Plug>(textobj-equation-a) :<C-u>call textobj#equation#a('x')<CR>
 
-call textobj#user#plugin('lhs', {
-      \   '-': {
-      \     'select-i-function': 'textobj#equation#lhs_i',
-      \     'select-i': 'iel',
-      \   },
-      \ })
+""" default keymappings
+" If g:textobj_equation_no_default_key_mappings has been defined, then quit immediately.
+if exists('g:textobj_equation_no_default_key_mappings') | finish | endif
 
-call textobj#user#plugin('rhs', {
-      \   '-': {
-      \     'select-i-function': 'textobj#equation#rhs_i',
-      \     'select-i': 'ier',
-      \   },
-      \ })
-
+omap ie <Plug>(textobj-equation-i)
+xmap ie <Plug>(textobj-equation-i)
+omap ae <Plug>(textobj-equation-a)
+xmap ae <Plug>(textobj-equation-a)
